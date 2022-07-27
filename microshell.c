@@ -5,10 +5,10 @@
 
 typedef struct s_micro
 {
-	int				cmd_args_size;
-	char			**cmd_args;
-	int				fd_in;
-	int				fd_out;
+	int		nb_args;
+	char	**args;
+	int		fd_in;
+	int		fd_out;
 	struct s_micro	*next;
 } t_micro;
 
@@ -32,80 +32,67 @@ void	ft_putendl_fd(char *str, int fd)
 	ft_putchar_fd('\n', fd);
 }
 
-t_micro	*init(void)
+t_micro	*ft_init(void)
 {
 	t_micro	*micro;
 
 	micro = (t_micro *)malloc(sizeof(t_micro));
+	micro->args = (char **)malloc(sizeof(char *) * 1024);
 	micro->fd_in = 0;
 	micro->fd_out = 1;
 	micro->next = NULL;
-	micro->cmd_args = (char **)malloc(sizeof(char *) * 1024);
 	return (micro);
 }
 
-void	ft_read(int *idx, int ac, char **av ,t_micro *micro)
+void	ft_read(int *idx, int ac, char **av, t_micro *micro)
 {
-	int		i;
+	int	i;
 
 	i = 0;
 	while (*idx < ac && strcmp("|", av[*idx]) && strcmp(";", av[*idx]))
 	{
-		micro->cmd_args[i] = av[*idx];
+		micro->args[i] = av[*idx];
 		i++;
 		(*idx)++;
 	}
-	micro->cmd_args[i] = NULL;
-	micro->cmd_args_size = i;
+	micro->args[i] = NULL;
+	micro->nb_args = i;
 }
-void	ft_pipe(t_micro *micro, int *idx)
+
+void	ft_pipe(int *idx, t_micro *micro)
 {
 	int	fd[2];
 
 	(*idx)++;
-	if (pipe(fd) == -1)
+	if (pipe(fd))
 	{
-		ft_putstr_fd("error: fatal", 2);
+		ft_putendl_fd("error: fatal", 2);
 		exit (1);
 	}
 	micro->fd_out = fd[1];
-	micro->next = init();
+	micro->next = ft_init();
 	micro->next->fd_in = fd[0];
-}
-
-void	ft_free(t_micro *micro)
-{
-	if (micro->fd_in != 0)
-		close(micro->fd_in);
-	if (micro->fd_out != 1)
-		close(micro->fd_out);
-	free(micro->cmd_args);
-	micro->cmd_args = NULL;
-	free(micro);
-	micro = NULL;
 }
 
 void	ft_exec(t_micro *micro, char **env)
 {
 	pid_t	child;
 
-	if (!strcmp("cd", micro->cmd_args[0]))
+	if (!strcmp("cd", micro->args[0]))
 	{
-		if (micro->cmd_args_size != 2 || !strcmp("-", micro->cmd_args[1]))
-		{
+		if (micro->nb_args != 2 || !strcmp("-", micro->args[1]))
 			ft_putendl_fd("error: cd: bad arguments", 2);
-		}
-		else if (chdir(micro->cmd_args[1]) == -1)
+		else if (chdir(micro->args[1]))
 		{
-			ft_putstr_fd("error: cannot change directory to ", 2);
-			ft_putendl_fd(micro->cmd_args[0], 2);
+			ft_putstr_fd("error: cd: cannot change directory to", 2);
+			ft_putendl_fd(micro->args[1], 2);
 		}
 		return ;
 	}
 	child = fork();
 	if (child == -1)
 	{
-		ft_putstr_fd("error: fatal", 2);
+		ft_putendl_fd("error: fatal", 2);
 		exit (1);
 	}
 	if (!child)
@@ -121,10 +108,10 @@ void	ft_exec(t_micro *micro, char **env)
 			dup2(micro->fd_out, 1);
 			close(micro->fd_out);
 		}
-		if (execve(micro->cmd_args[0], micro->cmd_args, env) == -1)
+		if (execve(micro->args[0], micro->args, env) == -1)
 		{
 			ft_putstr_fd("error: cannot execute ", 2);
-			ft_putendl_fd(micro->cmd_args[0], 2);
+			ft_putendl_fd(micro->args[0], 2);
 			return ;
 		}
 	}
@@ -135,29 +122,37 @@ void	ft_exec(t_micro *micro, char **env)
 	}
 }
 
+void	ft_free(t_micro *micro)
+{
+	if (micro->fd_in != 0)
+		close(micro->fd_in);
+	if (micro->fd_out != 1)
+		close(micro->fd_out);
+	free(micro->args);
+	micro->args = NULL;
+	free(micro);
+	micro = NULL;
+}
 
 int	main(int ac, char **av, char **env)
 {
 	int		i;
-	t_micro	*tmp;
-	t_micro	*micro;
+	t_micro *tmp;
+	t_micro *micro;
 
 	micro = NULL;
 	i = 1;
 	while (i < ac)
 	{
-		if (!strcmp(";", av[i]))
-		{
-			i++;
-			continue;
-		}
+		if (!strcmp(";", av[i]) && i++)
+			continue ;
 		if (!micro)
-			micro = init();
+			micro = ft_init();
 		ft_read(&i, ac, av, micro);
 		if (i < ac && !strcmp("|", av[i]))
-			ft_pipe(micro, &i);
-		tmp = micro;
+			ft_pipe(&i, micro);
 		ft_exec(micro, env);
+		tmp = micro;
 		micro = micro->next;
 		ft_free(tmp);
 	}
